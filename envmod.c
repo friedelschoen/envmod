@@ -99,7 +99,13 @@ void limit(int what, rlim_t l) {
 }
 
 void usage(int code) {
-	fprintf(stderr, "envmod\n");
+	fprintf(stderr, "usage: envmod [options] prog [arguments...]\n"
+	                "       softlimit [options] prog [arguments...]\n"
+	                "       setlock [-nNxX] prog [arguments...]\n"
+	                "       setuidgid [:]user[:group] prog [arguments...]\n"
+	                "       envuidgid [:]user[:group] prog [arguments...]\n"
+	                "       pgrphack prog [arguments...]\n");
+
 	exit(code);
 }
 
@@ -115,7 +121,11 @@ int main(int argc, char **argv) {
 	int  closefd[10];
 	for (int i = 0; i < 10; i++)
 		closefd[i] = 0;
-	char *self = argv[0];
+	char *self = strrchr(argv[0], '/');
+	if (self == NULL)
+		self = argv[0];
+	else
+		self++;
 
 	if (!strcmp(self, "setuidgid") || !strcmp(self, "envuidgid")) {
 		if (argc < 2) {
@@ -140,15 +150,11 @@ int main(int argc, char **argv) {
 			case 'X':
 				fprintf(stderr, "warning: '-%c' is ignored\n", OPT);
 				break;
-			case '?':
-				fprintf(stderr, "%s [-xXnN] command...", self);
-				return 1;
+			default:
+				fprintf(stderr, "error: unknown option -%c\n", OPT);
+				usage(1);
 		}
 		ARGEND
-		if (argc < 1) {
-			fprintf(stderr, "%s [-xXnN] command...", self);
-			return 1;
-		}
 		lock = self;
 		SHIFT;
 	} else if (!strcmp(self, "softlimit")) {
@@ -188,8 +194,8 @@ int main(int argc, char **argv) {
 				limits = atoi(EARGF(usage(1)));
 				break;
 			default:
-				fprintf(stderr, "softlimit command...");
-				return 1;
+				fprintf(stderr, "error: unknown option -%c\n", OPT);
+				usage(1);
 		}
 		ARGEND
 	} else {
@@ -257,16 +263,16 @@ int main(int argc, char **argv) {
 			case 'e':
 				fprintf(stderr, "warning: '-%c' is ignored\n", optopt);
 				break;
-			case '?':
-				fprintf(stderr, "usage\n");
-				return 1;
+			default:
+				fprintf(stderr, "error: unknown option -%c\n", OPT);
+				usage(1);
 		}
 		ARGEND
 	}
 
 	if (argc == 0) {
 		fprintf(stderr, "%s: command required\n", self);
-		return 1;
+		usage(1);
 	}
 
 	if (ssid) {
