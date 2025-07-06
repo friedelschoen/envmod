@@ -12,15 +12,17 @@ date: July 2025
 
 *envmod* [*-vP012*] [*-u* user] [*-U* user] [*-b* argv0] [*-e* dir] [*-/* root] [*-n* inc] [*-l*|*-L* lock] [*-m* bytes] [*-d* bytes] [*-o* n] [*-p* n] [*-f* bytes] [*-c* bytes] prog [arguments...]
 
+*softlimit* [*-a* bytes] [*-c* bytes] [*-d* bytes] [*-f* bytes] [*-l* bytes] [*-m* bytes] [*-o* fds] [*-p* procs] [*-r* bytes] [*-s* bytes] [*-t* secs] prog [arguments...]
+
 *setuidgid* *[:]user[:group]* prog [arguments...]
 
 *envuidgid* *[:]user[:group]* prog [arguments...]
 
 *pgrphack* prog [arguments...]
 
-*setlock* [*-nNxX*] prog [arguments...]
+*envdir* path prog [arguments...]
 
-*softlimit* [*-a* bytes] [*-c* bytes] [*-d* bytes] [*-f* bytes] [*-l* bytes] [*-m* bytes] [*-o* fds] [*-p* procs] [*-r* bytes] [*-s* bytes] [*-t* secs] prog [arguments...]
+*setlock* [*-nNxX*] prog [arguments...]
 
 # DESCRIPTION
 
@@ -29,6 +31,8 @@ date: July 2025
 *setuidgid \<user,group>* is the same as *envmod -u \<user,group>*
 
 *envuidgid \<user,group>* is the same as *envmod -U \<user,group>*
+
+*envdir \<path>* is the same as *envmod -e \<path>*
 
 *pgrphack* is the same as *envmod -P*
 
@@ -52,6 +56,10 @@ Change the root directory to root before starting prog.
 
 ## -C *pwd*
 Change the working directory to pwd before starting prog. When combined with -/, the working directory is changed after the chroot.
+
+## -e dir
+Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
+the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable.
 
 ## -n *inc*
 Add inc to the nice(2) value before starting prog. inc must be an integer, and may start with a minus or plus.
@@ -123,14 +131,6 @@ Causes *setlock* to wait until the lock is released by another process. This is 
 
 ## -x, -X
 These options modify the exit behavior, this is not supported in *envmod* and is ignored.
-
-## NOT IMPLEMENTED
-
-Following options are defined in runit's chpst but are ignored by envmod's implementation.
-
-## -e dir
-Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
-the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable.
 
 # EXIT STATUS
 

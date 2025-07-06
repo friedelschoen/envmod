@@ -1,6 +1,10 @@
 #include "arg.h"
 
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
 #include <grp.h>
+#include <linux/limits.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,12 +85,81 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	return gid_size;
 }
 
+char *nicevar(char *text, size_t size) {
+	while (size > 0 && isspace(text[0])) {
+		text++, size--;
+	}
+	while (size > 0 && isspace(text[size] - 1)) {
+		size--;
+	}
+	text[size] = '\0';
+
+	for (size_t i = 0; i < size; i++) {
+		if (text[i] == '=') {
+			fprintf(stderr, "'=' in envfile: %s\n", text);
+			return NULL;
+		}
+		if (text[i] == '\0') {
+			text[i] = '\n';
+		}
+	}
+
+	return text;
+}
+
+void parse_envdir(const char *path) {
+	DIR           *dir;
+	FILE          *fp;
+	struct dirent *entry;
+	char           entrypath[PATH_MAX], *envval = NULL, *newval;
+	size_t         size, envvalalloc            = 0;
+
+	if (!(dir = opendir(path))) {
+		perror("opendir envdir");
+		return;
+	}
+
+	while ((entry = readdir(dir)) != NULL) {
+		snprintf(entrypath, PATH_MAX, "%s/%s", path, entry->d_name);
+		if ((fp = fopen(entrypath, "r")) == NULL) {
+			fprintf(stderr, "unable to open %s: %s\n", entrypath, strerror(errno));
+			perror("fopen envdir file");
+			continue;
+		}
+		fseek(fp, 0, SEEK_END);
+		size = ftell(fp);
+		if (size == 0) {
+			unsetenv(entry->d_name);
+		} else {
+			rewind(fp);
+			if (size + 1 > envvalalloc) {
+				if ((newval = realloc(envval, size + 1)) == NULL) {
+					perror("alloc");
+					exit(1);
+				}
+				envval      = newval;
+				envvalalloc = size + 1;
+			}
+			fread(envval, size, 1, fp);
+			if ((newval = nicevar(envval, size)) != NULL) {
+				setenv(entry->d_name, newval, 1);
+			}
+		}
+		fclose(fp);
+	}
+	if (envval != NULL)
+		free(envval);
+
+	closedir(dir);
+}
+
 void limit(int what, long l) {
 	struct rlimit r;
 
-	if (getrlimit(what, &r) == -1)
+	if (getrlimit(what, &r) == -1) {
 		fprintf(stderr, "error: unable to getrlimit\n");
-
+		return;
+	}
 	if (l < 0) {
 		r.rlim_cur = 0;
 	} else if ((rlim_t) l > r.rlim_max)
@@ -104,6 +177,7 @@ void usage(int code) {
 	                "       setlock [-nNxX] prog [arguments...]\n"
 	                "       setuidgid [:]user[:group] prog [arguments...]\n"
 	                "       envuidgid [:]user[:group] prog [arguments...]\n"
+	                "       envdir dir prog [arguments...]\n"
 	                "       pgrphack prog [arguments...]\n");
 
 	exit(code);
@@ -111,7 +185,7 @@ void usage(int code) {
 
 int main(int argc, char **argv) {
 	int   lockfd, lockflags = 0, gid_len = 0;
-	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
+	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL, *envdirpath = NULL;
 	uid_t uid = 0;
 	gid_t gid[61];
 	long  limitd = -2, limits = -2, limitl = -2, limita = -2, limito = -2, limitp = -2, limitf = -2, limitc = -2,
@@ -134,6 +208,13 @@ int main(int argc, char **argv) {
 			return 1;
 		}
 		gid_len = parse_ugid(argv[1], &uid, gid);
+		argv += 2, argc -= 2;
+	} else if (!strcmp(self, "envdir")) {
+		if (argc < 2) {
+			fprintf(stderr, "%s <uid-gid> command...", self);
+			return 1;
+		}
+		envdirpath = argv[1];
 		argv += 2, argc -= 2;
 	} else if (!strcmp(self, "pgrphack")) {
 		ssid++;
@@ -230,6 +311,9 @@ int main(int argc, char **argv) {
 				lock      = EARGF(usage(1));
 				lockflags = LOCK_EX;
 				break;
+			case 'e':
+				envdirpath = EARGF(usage(1));
+				break;
 			case 'v':
 				verbose++;
 				break;
@@ -265,9 +349,6 @@ int main(int argc, char **argv) {
 				break;
 			case 's':
 				limits = atol(EARGF(usage(1)));
-				break;
-			case 'e':
-				fprintf(stderr, "warning: '-%c' is ignored\n", optopt);
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
@@ -414,6 +495,10 @@ int main(int argc, char **argv) {
 			perror("unable to lock");
 			exit(1);
 		}
+	}
+
+	if (envdirpath) {
+		parse_envdir(envdirpath);
 	}
 
 	for (int i = 0; i < 10; i++) {
