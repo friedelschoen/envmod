@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "arg.h"
 
 #include <ctype.h>
@@ -13,6 +15,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
+extern char **environ;
 
 /* uid:gid[:gid[:gid]...] */
 static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
@@ -57,6 +60,7 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	}
 
 	if ((pwd = getpwnam(str)) == NULL) {
+		fprintf(stderr, "unknown user: %s\n", groupstr);
 		return -1;
 	}
 	*uid = pwd->pw_uid;
@@ -76,9 +80,10 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 		} else {
 			next = NULL;
 		}
-		if ((gr = getgrnam(groupstr)) == NULL)
+		if ((gr = getgrnam(groupstr)) == NULL) {
+			fprintf(stderr, "unknown group: %s\n", groupstr);
 			return -1;
-
+		}
 		gids[gid_size++] = gr->gr_gid;
 	}
 
@@ -184,10 +189,11 @@ void usage(int code) {
 }
 
 int main(int argc, char **argv) {
-	int   lockfd, lockflags = 0, gid_len = 0;
+	int   lockfd, lockflags = 0, gid_len = 0, envgid_len = 0;
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL, *envdirpath = NULL;
-	uid_t uid = 0;
-	gid_t gid[61];
+	int   setuser = 0, setenvuser = 0;
+	uid_t uid, envuid;
+	gid_t gid[61], envgid[61];
 	long  limitd = -2, limits = -2, limitl = -2, limita = -2, limito = -2, limitp = -2, limitf = -2, limitc = -2,
 	     limitr = -2, limitt = -2;
 	long nicelevel = 0;
@@ -207,6 +213,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "%s <uid-gid> command...", self);
 			return 1;
 		}
+		setuser++;
 		gid_len = parse_ugid(argv[1], &uid, gid);
 		argv += 2, argc -= 2;
 	} else if (!strcmp(self, "envdir")) {
@@ -288,8 +295,16 @@ int main(int argc, char **argv) {
 		ARGBEGIN
 		switch (OPT) {
 			case 'u':
+				setuser++;
+				if ((gid_len = parse_ugid(EARGF(usage(1)), &uid, gid)) == -1) {
+					return -1;
+				}
+				break;
 			case 'U':
-				gid_len = parse_ugid(EARGF(usage(1)), &uid, gid);
+				setenvuser++;
+				if ((envgid_len = parse_ugid(EARGF(usage(1)), &envuid, envgid)) == -1) {
+					return -1;
+				}
 				break;
 			case 'b':
 				arg0 = EARGF(usage(1));
@@ -321,7 +336,7 @@ int main(int argc, char **argv) {
 				ssid++;
 				break;
 			case '0' ... '9':
-				closefd[OPT - '0'] = 1;
+				closefd[OPT - '0']++;
 				break;
 			case 'm':
 				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
@@ -366,11 +381,24 @@ int main(int argc, char **argv) {
 		setsid();
 	}
 
-	if (uid) {
+	if (setuser) {
 		setgroups(gid_len, gid);
 		setgid(gid[0]);
 		setuid(uid);
-		// $EUID
+		if (envuid == 0) {
+			setenvuser++;
+			envuid     = uid;
+			envgid_len = gid_len;
+			memcpy(envgid, gid, sizeof(*gid) * gid_len);
+		}
+	}
+
+	if (setenvuser) {
+		char dest[10];
+		snprintf(dest, sizeof(dest), "%u", envuid);
+		setenv("UID", dest, 1);
+		snprintf(dest, sizeof(dest), "%u", envgid[0]);
+		setenv("GID", dest, 1);
 	}
 
 	if (root) {
@@ -511,7 +539,7 @@ int main(int argc, char **argv) {
 	if (arg0)
 		self = arg0;
 
-	execvp(exec, argv);
+	execvpe(exec, argv, environ);
 	perror("execute");
 	return 127;
 }
