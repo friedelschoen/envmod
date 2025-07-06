@@ -81,7 +81,7 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	return gid_size;
 }
 
-void limit(int what, rlim_t l) {
+void limit(int what, long l) {
 	struct rlimit r;
 
 	if (getrlimit(what, &r) == -1)
@@ -89,7 +89,7 @@ void limit(int what, rlim_t l) {
 
 	if (l < 0) {
 		r.rlim_cur = 0;
-	} else if (l > r.rlim_max)
+	} else if ((rlim_t) l > r.rlim_max)
 		r.rlim_cur = r.rlim_max;
 	else
 		r.rlim_cur = l;
@@ -110,7 +110,7 @@ void usage(int code) {
 }
 
 int main(int argc, char **argv) {
-	int   opt, lockfd, lockflags, gid_len = 0;
+	int   lockfd, lockflags = 0, gid_len = 0;
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
 	uid_t uid = 0;
 	gid_t gid[61];
@@ -118,6 +118,7 @@ int main(int argc, char **argv) {
 	     limitr = -2, limitt = -2;
 	long nicelevel = 0;
 	int  ssid      = 0;
+	int  verbose   = 0;
 	int  closefd[10];
 	for (int i = 0; i < 10; i++)
 		closefd[i] = 0;
@@ -155,43 +156,44 @@ int main(int argc, char **argv) {
 				usage(1);
 		}
 		ARGEND
-		lock = self;
+		lock = argv[0];
 		SHIFT;
 	} else if (!strcmp(self, "softlimit")) {
 		ARGBEGIN
 		switch (OPT) {
 			case 'm':
-				limits = limitl = limita = limitd = atoi(EARGF(usage(1)));
+				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
 				break;
 			case 'a':
-				limita = atoi(EARGF(usage(1)));
+				limita = atol(EARGF(usage(1)));
 				break;
 			case 'd':
-				limitd = atoi(EARGF(usage(1)));
+				limitd = atol(EARGF(usage(1)));
 				break;
 			case 'o':
-				limito = atoi(EARGF(usage(1)));
+				limito = atol(EARGF(usage(1)));
 				break;
 			case 'p':
-				limitp = atoi(EARGF(usage(1)));
+				limitp = atol(EARGF(usage(1)));
 				break;
 			case 'f':
-				limitf = atoi(EARGF(usage(1)));
+				limitf = atol(EARGF(usage(1)));
 				break;
 			case 'c':
-				limitc = atoi(EARGF(usage(1)));
+				limitc = atol(EARGF(usage(1)));
 				break;
 			case 'r':
-				limitr = atoi(EARGF(usage(1)));
+				limitr = atol(EARGF(usage(1)));
 				break;
 			case 't':
-				limitt = atoi(EARGF(usage(1)));
+				limitt = atol(EARGF(usage(1)));
 				break;
 			case 'l':
-				limitl = atoi(EARGF(usage(1)));
+			case 'M':
+				limitl = atol(EARGF(usage(1)));
 				break;
 			case 's':
-				limits = atoi(EARGF(usage(1)));
+				limits = atol(EARGF(usage(1)));
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
@@ -218,7 +220,7 @@ int main(int argc, char **argv) {
 				cd = EARGF(usage(1));
 				break;
 			case 'n':
-				nicelevel = atoi(EARGF(usage(1)));
+				nicelevel = atol(EARGF(usage(1)));
 				break;
 			case 'l':
 				lock      = EARGF(usage(1));
@@ -228,7 +230,8 @@ int main(int argc, char **argv) {
 				lock      = EARGF(usage(1));
 				lockflags = LOCK_EX;
 				break;
-			case 'v':    // ignored
+			case 'v':
+				verbose++;
 				break;
 			case 'P':
 				ssid++;
@@ -237,28 +240,31 @@ int main(int argc, char **argv) {
 				closefd[OPT - '0'] = 1;
 				break;
 			case 'm':
-				limits = limitl = limita = limitd = atoi(EARGF(usage(1)));
+				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
 				break;
 			case 'd':
-				limitd = atoi(EARGF(usage(1)));
+				limitd = atol(EARGF(usage(1)));
 				break;
 			case 'o':
-				limito = atoi(EARGF(usage(1)));
+				limito = atol(EARGF(usage(1)));
 				break;
 			case 'p':
-				limitp = atoi(EARGF(usage(1)));
+				limitp = atol(EARGF(usage(1)));
 				break;
 			case 'f':
-				limitf = atoi(EARGF(usage(1)));
+				limitf = atol(EARGF(usage(1)));
 				break;
 			case 'c':
-				limitc = atoi(EARGF(usage(1)));
+				limitc = atol(EARGF(usage(1)));
 				break;
 			case 'r':
-				limitr = atoi(EARGF(usage(1)));
+				limitr = atol(EARGF(usage(1)));
 				break;
 			case 't':
-				limitt = atoi(EARGF(usage(1)));
+				limitt = atol(EARGF(usage(1)));
+				break;
+			case 's':
+				limits = atol(EARGF(usage(1)));
 				break;
 			case 'e':
 				fprintf(stderr, "warning: '-%c' is ignored\n", optopt);
@@ -416,7 +422,7 @@ int main(int argc, char **argv) {
 			exit(1);
 		}
 	}
-	exec = self;
+	exec = argv[0];
 	if (arg0)
 		self = arg0;
 
