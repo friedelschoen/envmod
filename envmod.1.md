@@ -22,6 +22,20 @@ date: July 2025
 
 *softlimit* [*-a* bytes] [*-c* bytes] [*-d* bytes] [*-f* bytes] [*-l* bytes] [*-m* bytes] [*-o* fds] [*-p* procs] [*-r* bytes] [*-s* bytes] [*-t* secs] prog [arguments...]
 
+# DESCRIPTION
+
+*envmod* is a re-implementation of runit's *chpst(8)*. It can also be linked to some daemontools utilities to emulate them.
+
+*setuidgid \<user,group>* is the same as *envmod -u \<user,group>*
+
+*envuidgid \<user,group>* is the same as *envmod -U \<user,group>*
+
+*pgrphack* is the same as *envmod -P*
+
+*softlimit \<options>* is the same as *envmod \<options>* for chosen options.
+
+*setlock* uses some custom options which are described below.
+
 # OPTIONS
 
 ## -u *[:]user[:group]*
@@ -60,8 +74,55 @@ Close standard output before starting prog.
 ## -2
 Close standard error before starting prog.
 
+## -3, -4, -5, -6, -7, -8, -9
+Close file descriptor N before starting prog.
+
 ## -v
 Print verbose messages to standard error. This includes warnings about limits unsupported by the system.
+
+## SOFTLIMIT
+Following options are understood by envmod, but also by *softlimit*.
+
+## -m *bytes*
+Limit the data segment, stack segment, locked physical pages, and total of all segment per process to bytes bytes each.
+
+## -d *bytes*
+limit data segment. Limit the data segment per process to bytes bytes.
+
+## -o *n*
+Limit the number of open file descriptors per process to n.
+
+## -p *n*
+Limit the number of processes per uid to n.
+
+## -f *bytes*
+Limit the output file size to bytes bytes.
+
+## -c *bytes*
+Limit the core file size to bytes bytes.
+
+## -r *n*
+Limit the resident set size to n bytes. This limit is not enforced unless physical memory is full.
+
+## -t *n*
+Limit the CPU time to n seconds. This limit is not enforced except that the process receives a SIGXCPU signal after n seconds.
+
+## -s *n*
+Limit the stack segment per process to n bytes.
+
+## -M *n*
+Limit the locked physical pages per process to n bytes. This option has no effect on some operating systems. In *softlimit*, this option is also called *-l*.
+
+## SETLOCK
+
+## -n
+Causes *setlock* to exit immediately if the lock is already held by another process.
+
+## -N
+Causes *setlock* to wait until the lock is released by another process. This is the default behavior.
+
+## -x, -X
+These options modify the exit behavior, this is not supported in *envmod* and is ignored.
 
 ## NOT IMPLEMENTED
 
@@ -71,33 +132,14 @@ Following options are defined in runit's chpst but are ignored by envmod's imple
 Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
 the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable.
 
-## -m bytes
-Limit the data segment, stack segment, locked physical pages, and total of all segment per process to bytes bytes each.
-
-## -d bytes
-limit data segment. Limit the data segment per process to bytes bytes.
-
-## -o n
-Limit the number of open file descriptors per process to n.
-
-## -p n
-Limit the number of processes per uid to n.
-
-## -f bytes
-Limit the output file size to bytes bytes.
-
-## -c bytes
-Limit the core file size to bytes bytes.
-
 # EXIT STATUS
 
 envmod exits 100 when called with wrong options. It prints an error message and exits 1 if it has trouble changing the process state. Otherwise its exit code is the same as that of prog.
 
-
 # AUTHOR
 
-Based on the implementation by Gerrit Pape <pape@smarden.org>,
-rewritten by Friedel Schön <derfriedmundschoen@gmail.com>
+Based on the implementation by Gerrit Pape \<pape@smarden.org>,
+rewritten by Friedel Schön \<derfriedmundschoen@gmail.com>
 
 # LICENSE
 
