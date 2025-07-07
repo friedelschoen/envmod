@@ -10,9 +10,9 @@ date: July 2025
 
 # SYNOPSIS
 
-*envmod* [*-vP012*] [*-u* user] [*-U* user] [*-b* argv0] [*-e* dir] [*-/* root] [*-n* inc] [*-l*|*-L* lock] [*-m* bytes] [*-d* bytes] [*-o* n] [*-p* n] [*-f* bytes] [*-c* bytes] prog [arguments...]
+*envmod* [options] prog [arguments...]
 
-*softlimit* [*-a* bytes] [*-c* bytes] [*-d* bytes] [*-f* bytes] [*-l* bytes] [*-m* bytes] [*-o* fds] [*-p* procs] [*-r* bytes] [*-s* bytes] [*-t* secs] prog [arguments...]
+*softlimit* [options] prog [arguments...]
 
 *setuidgid* *[:]user[:group]* prog [arguments...]
 
@@ -61,6 +61,9 @@ Change the working directory to pwd before starting prog. When combined with -/,
 Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
 the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable.
 
+## -E file
+Set various environment variables as specified by a file *path*. This file contains lines of variables, key and value are delimited by '='. If the value is empty (has a trailing '='), the key is removed from the environment. Lines without a '=' are ignored. Leading and trailing whitespaces are striped before.
+
 ## -n *inc*
 Add inc to the nice(2) value before starting prog. inc must be an integer, and may start with a minus or plus.
 
@@ -69,6 +72,9 @@ Open the file lock for writing, and obtain an exclusive lock on it. lock will be
 
 ## -L *lock*
 The same as -l, but fail immediately if lock is locked by another process.
+
+## -x
+Clear environment before setting environment-variables.
 
 ## -P
 Run prog in a new process group.

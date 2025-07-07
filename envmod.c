@@ -97,7 +97,7 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	return gid_size;
 }
 
-char *nicevar(char *text, size_t size) {
+char *strip(char *text, size_t size) {
 	while (size > 0 && isspace(text[0])) {
 		text++, size--;
 	}
@@ -105,6 +105,11 @@ char *nicevar(char *text, size_t size) {
 		size--;
 	}
 	text[size] = '\0';
+	return text;
+}
+
+char *nicevar(char *text, size_t size) {
+	text = strip(text, size);
 
 	for (size_t i = 0; i < size; i++) {
 		if (text[i] == '=') {
@@ -165,6 +170,36 @@ void parse_envdir(const char *path) {
 	closedir(dir);
 }
 
+void parse_envfile(const char *path) {
+	FILE   *fp;
+	char   *line       = NULL, *value;
+	size_t  line_alloc = 0;
+	ssize_t line_len;
+
+	if ((fp = fopen(path, "r")) == NULL) {
+		perror("open envfile");
+		exit(1);
+	}
+
+	while ((line_len = getline(&line, &line_alloc, fp)) > 0) {
+		line  = strip(line, line_len);
+		value = strchr(line, '=');
+		if (!value)
+			continue;
+
+		*(value++) = '\0';
+		if (value[0] == '\0') {
+			unsetenv(line);
+		} else {
+			setenv(line, value, 1);
+		}
+	}
+
+	if (line)
+		free(line);
+	fclose(fp);
+}
+
 void limit(int what, long l) {
 	struct rlimit r;
 
@@ -200,7 +235,7 @@ int main(int argc, char **argv) {
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
 	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX];
 	int   envdirpath_len = 0, envfilepath_len = 0;
-	int   setuser = 0, setenvuser = 0;
+	int   setuser = 0, setenvuser = 0, clearenviron = 0;
 	uid_t uid, envuid;
 	gid_t gid[61], envgid[61];
 	long  limitd = -2, limits = -2, limitl = -2, limita = -2, limito = -2, limitp = -2, limitf = -2, limitc = -2,
@@ -337,6 +372,12 @@ int main(int argc, char **argv) {
 				break;
 			case 'e':
 				envdirpath[envdirpath_len++] = EARGF(usage(1));
+				break;
+			case 'E':
+				envfilepath[envfilepath_len++] = EARGF(usage(1));
+				break;
+			case 'x':
+				clearenviron++;
 				break;
 			case 'v':
 				verbose++;
@@ -550,8 +591,16 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (clearenviron) {
+		clearenv();
+	}
+
 	for (int i = 0; i < envdirpath_len; i++) {
 		parse_envdir(envdirpath[i]);
+	}
+
+	for (int i = 0; i < envfilepath_len; i++) {
+		parse_envfile(envfilepath[i]);
 	}
 
 	for (int i = 0; i < 10; i++) {
