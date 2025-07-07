@@ -74,6 +74,12 @@ def test_closestderr():
 def test_setsid():
     assert run("-P", "python3", "-c", "import os; print(os.getsid(0))") != os.getsid(0)
 
+def test_envdir():
+    assert run("-e", "testdata/envdir", shell="echo $hello $foo $HOME") == "world bar"
+
+def test_envfile():
+    assert run("-E", "testdata/envfile.txt", shell="echo $hello $foo $HOME") == "world bar"
+
 if os.geteuid() == 0:
     def test_uidgid():
         assert run("-u", "nobody:nogroup", shell="whoami; groups") == "nobody\nnogroup"

@@ -129,7 +129,7 @@ void parse_envdir(const char *path) {
 	FILE          *fp;
 	struct dirent *entry;
 	char           entrypath[PATH_MAX], *envval = NULL, *newval;
-	size_t         size, envvalalloc            = 0;
+	long           envvalalloc = 0, size;
 
 	if (!(dir = opendir(path))) {
 		perror("opendir envdir");
@@ -137,6 +137,8 @@ void parse_envdir(const char *path) {
 	}
 
 	while ((entry = readdir(dir)) != NULL) {
+		if (entry->d_name[0] == '.')
+			continue;
 		snprintf(entrypath, PATH_MAX, "%s/%s", path, entry->d_name);
 		if ((fp = fopen(entrypath, "r")) == NULL) {
 			fprintf(stderr, "unable to open %s: %s\n", entrypath, strerror(errno));
