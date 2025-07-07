@@ -75,6 +75,9 @@ def test_setsid():
     assert run("-P", "python3", "-c", "import os; print(os.getsid(0))") != os.getsid(0)
 
 if os.geteuid() == 0:
+    def test_uidgid():
+        assert run("-u", "nobody:nogroup", shell="whoami; groups") == "nobody\nnogroup"
+
     def test_nice_dec():
         value = -random.randint(0, 10)
         assert run("-n", str(value), "nice") == str(os.nice(0) + value)

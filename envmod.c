@@ -382,13 +382,26 @@ int main(int argc, char **argv) {
 	}
 
 	if (ssid) {
-		setsid();
+		if (setsid()) {
+			perror("setsid");
+			return 1;
+		}
 	}
 
 	if (setuser) {
-		setgroups(gid_len, gid);
-		setgid(gid[0]);
-		setuid(uid);
+		if (setgroups(gid_len, gid) == -1) {
+			perror("setgroups");
+			return 1;
+		}
+		if (setgid(gid[0]) == -1) {
+			perror("setgid");
+			return 1;
+		}
+		if (setuid(uid) == -1) {
+			perror("setuid");
+			return 1;
+		}
+
 		if (envuid == 0) {
 			setenvuser++;
 			envuid     = uid;
