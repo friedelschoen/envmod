@@ -15,6 +15,9 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
+#define ENVFILE_MAX 16
+
+
 extern char **environ;
 
 /* uid:gid[:gid[:gid]...] */
@@ -194,7 +197,9 @@ void usage(int code) {
 
 int main(int argc, char **argv) {
 	int   lockfd, lockflags = 0, gid_len = 0, envgid_len = 0;
-	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL, *envdirpath = NULL;
+	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
+	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX];
+	int   envdirpath_len = 0, envfilepath_len = 0;
 	int   setuser = 0, setenvuser = 0;
 	uid_t uid, envuid;
 	gid_t gid[61], envgid[61];
@@ -225,7 +230,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "%s <uid-gid> command...", self);
 			return 1;
 		}
-		envdirpath = argv[1];
+		envdirpath[envdirpath_len++] = argv[1];
 		argv += 2, argc -= 2;
 	} else if (!strcmp(self, "pgrphack")) {
 		ssid++;
@@ -331,7 +336,7 @@ int main(int argc, char **argv) {
 				lockflags = LOCK_EX;
 				break;
 			case 'e':
-				envdirpath = EARGF(usage(1));
+				envdirpath[envdirpath_len++] = EARGF(usage(1));
 				break;
 			case 'v':
 				verbose++;
@@ -545,8 +550,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if (envdirpath) {
-		parse_envdir(envdirpath);
+	for (int i = 0; i < envdirpath_len; i++) {
+		parse_envdir(envdirpath[i]);
 	}
 
 	for (int i = 0; i < 10; i++) {
