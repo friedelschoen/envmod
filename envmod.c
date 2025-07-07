@@ -411,7 +411,7 @@ int main(int argc, char **argv) {
 			exit(1);
 		}
 		// chdir to '/', otherwise the next command will complain 'directory not found'
-		if (chdir(cd) == -1)
+		if (chdir("/") == -1)
 			perror("unable to change directory");
 	}
 
@@ -423,8 +423,11 @@ int main(int argc, char **argv) {
 	}
 
 	if (nicelevel != 0) {
-		if (nice(nicelevel) == -1) {
+		errno = 0;
+		nice(nicelevel);
+		if (errno != 0) {
 			perror("unable to set nice level");
+			exit(1);
 			/* no exit, nice(2) states there are true negatives */
 		}
 	}
@@ -519,7 +522,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (lock) {
-		if ((lockfd = open(lock, O_WRONLY | O_APPEND)) == -1) {
+		if ((lockfd = open(lock, O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1) {
 			perror("unable to open lock");
 			exit(1);
 		}
