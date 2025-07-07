@@ -236,8 +236,8 @@ void usage(int code) {
 int main(int argc, char **argv) {
 	int   lockfd, lockflags = 0, gid_len = 0, envgid_len = 0;
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
-	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX], *keepenv[KEEPENV_MAX];
-	int   envdirpath_len = 0, envfilepath_len = 0, keepenv_len = 0;
+	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX], *modenv[KEEPENV_MAX];
+	int   envdirpath_len = 0, envfilepath_len = 0, modenv_len = 0;
 	int   setuser = 0, setenvuser = 0, clearenviron = 0;
 	uid_t uid, envuid;
 	gid_t gid[61], envgid[61];
@@ -383,7 +383,7 @@ int main(int argc, char **argv) {
 				clearenviron++;
 				break;
 			case 'k':
-				keepenv[keepenv_len++] = EARGF(usage(1));
+				modenv[modenv_len++] = EARGF(usage(1));
 				break;
 			case 'v':
 				verbose++;
@@ -598,23 +598,27 @@ int main(int argc, char **argv) {
 	}
 
 	if (clearenviron) {
-		if (keepenv_len == 0) {
+		if (modenv_len == 0) {
 			clearenv();
 		} else {
-			char **newenvion = malloc((keepenv_len + 1) * sizeof(char *));
+			char **newenvion = malloc((modenv_len + 1) * sizeof(char *));
 			int    envlen    = 0;
-			for (int i = 0; i < keepenv_len; i++) {
-				char *value = getenv(keepenv[i]);
+			for (int i = 0; i < modenv_len; i++) {
+				char *value = getenv(modenv[i]);
 				if (value == NULL) {
-					fprintf(stderr, "error: unknown environ '%s'\n", keepenv[i]);
+					fprintf(stderr, "error: unknown environ '%s'\n", modenv[i]);
 					continue;
 				}
-				char *pair = malloc(strlen(keepenv[i]) + strlen(value) + 2);
-				sprintf(pair, "%s=%s", keepenv[i], value);
+				char *pair = malloc(strlen(modenv[i]) + strlen(value) + 2);
+				sprintf(pair, "%s=%s", modenv[i], value);
 				newenvion[envlen++] = pair;
 			}
 			newenvion[envlen] = NULL;
 			environ           = newenvion;
+		}
+	} else {
+		for (int i = 0; i < modenv_len; i++) {
+			unsetenv(modenv[i]);
 		}
 	}
 

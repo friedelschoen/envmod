@@ -77,7 +77,7 @@ The same as -l, but fail immediately if lock is locked by another process.
 Clear environment before setting environment-variables.
 
 ## -k *variable*
-Used with *-x*. Clear the environment but keep *variable*. Can be used multiple times.
+Removes *variable* from the environment. But when used with *-x*, clear the environment but keep *variable*. Can be used multiple times.
 
 ## -P
 Run prog in a new process group.

@@ -83,6 +83,9 @@ def test_envfile():
 def test_keepenv():
     assert run("-x", "-k", "PATH", shell="echo $HOME $PATH") == os.getenv("PATH")
 
+def test_delenv():
+    assert run("-k", "HOME", shell="echo $HOME $PATH") == os.getenv("PATH")
+
 if os.geteuid() == 0:
     def test_uidgid():
         assert run("-u", "nobody:nogroup", shell="whoami; groups") == "nobody\nnogroup"
