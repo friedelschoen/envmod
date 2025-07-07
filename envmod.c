@@ -19,16 +19,18 @@ extern char **environ;
 
 /* uid:gid[:gid[:gid]...] */
 static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
-	int   i;
+	int   i = 0;
 	char *end;
 
 	*uid = strtoul(str, &end, 10);
-
-	if (*end != ':')
-		return -1;
+	if (*end != ':') {
+		gids[0] = *uid;
+		return 1;
+	}
 
 	str = end + 1;
-	for (i = 0; i < 60; ++i, ++str) {
+
+	while (i < 60) {
 		gids[i++] = strtoul(str, &end, 10);
 
 		if (*end != ':')
@@ -37,8 +39,10 @@ static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
 		str = end + 1;
 	}
 
-	if (*str != '\0')
+	if (*end != '\0') {
+		fprintf(stderr, "error: expected end, got %c\n", *end);
 		return -1;
+	}
 
 	return i;
 }
@@ -421,7 +425,7 @@ int main(int argc, char **argv) {
 	if (nicelevel != 0) {
 		if (nice(nicelevel) == -1) {
 			perror("unable to set nice level");
-			exit(1);
+			/* no exit, nice(2) states there are true negatives */
 		}
 	}
 
@@ -537,7 +541,7 @@ int main(int argc, char **argv) {
 	}
 	exec = argv[0];
 	if (arg0)
-		self = arg0;
+		argv[0] = arg0;
 
 	execvpe(exec, argv, environ);
 	perror("execute");
