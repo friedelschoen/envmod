@@ -80,6 +80,9 @@ def test_envdir():
 def test_envfile():
     assert run("-E", "testdata/envfile.txt", shell="echo $hello $foo $HOME") == "world bar"
 
+def test_keepenv():
+    assert run("-x", "-k", "PATH", shell="echo $HOME $PATH") == os.getenv("PATH")
+
 if os.geteuid() == 0:
     def test_uidgid():
         assert run("-u", "nobody:nogroup", shell="whoami; groups") == "nobody\nnogroup"

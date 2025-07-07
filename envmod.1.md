@@ -59,10 +59,10 @@ Change the working directory to pwd before starting prog. When combined with -/,
 
 ## -e dir
 Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
-the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable.
+the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable. Can be used multiple times.
 
 ## -E file
-Set various environment variables as specified by a file *path*. This file contains lines of variables, key and value are delimited by '='. If the value is empty (has a trailing '='), the key is removed from the environment. Lines without a '=' are ignored. Leading and trailing whitespaces are striped before.
+Set various environment variables as specified by a file *path*. This file contains lines of variables, key and value are delimited by '='. If the value is empty (has a trailing '='), the key is removed from the environment. Lines without a '=' are ignored. Leading and trailing whitespaces are striped before. Can be used multiple times.
 
 ## -n *inc*
 Add inc to the nice(2) value before starting prog. inc must be an integer, and may start with a minus or plus.
@@ -75,6 +75,9 @@ The same as -l, but fail immediately if lock is locked by another process.
 
 ## -x
 Clear environment before setting environment-variables.
+
+## -k *variable*
+Used with *-x*. Clear the environment but keep *variable*. Can be used multiple times.
 
 ## -P
 Run prog in a new process group.
