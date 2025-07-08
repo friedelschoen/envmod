@@ -428,6 +428,15 @@ int main(int argc, char **argv) {
 		ARGEND
 	}
 
+	while (argc > 0) {
+		char *value = strchr(argv[0], '=');
+		if (!value)
+			break;
+		*(value++) = '\0';
+		setenv(argv[0], value, 1);
+		SHIFT;
+	}
+
 	if (argc == 0) {
 		fprintf(stderr, "%s: command required\n", self);
 		usage(1);
