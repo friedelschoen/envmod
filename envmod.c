@@ -238,7 +238,7 @@ int main(int argc, char **argv) {
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
 	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX], *modenv[KEEPENV_MAX];
 	int   envdirpath_len = 0, envfilepath_len = 0, modenv_len = 0;
-	int   setuser = 0, setenvuser = 0, clearenviron = 0;
+	int   setuser = 0, setenvuser = 0, clearenviron = 0, setenvargs = 0;
 	uid_t uid, envuid;
 	gid_t gid[61], envgid[61];
 	long  limitd = -2, limits = -2, limitl = -2, limita = -2, limito = -2, limitp = -2, limitf = -2, limitc = -2,
@@ -335,6 +335,27 @@ int main(int argc, char **argv) {
 				usage(1);
 		}
 		ARGEND
+	} else if (!strcmp(self, "env")) {
+		ARGBEGIN
+		switch (OPT) {
+			case 'i':
+				clearenviron++;
+				break;
+			case 'u':
+				modenv[modenv_len++] = EARGF(usage(1));
+				break;
+			case 'C':
+				cd = EARGF(usage(1));
+				break;
+			case 'v':
+				verbose++;
+				break;
+			default:
+				fprintf(stderr, "error: unknown option -%c\n", OPT);
+				usage(1);
+		}
+		ARGEND
+		setenvargs++;
 	} else {
 		if (strcmp(self, "envmod") && strcmp(self, "chpst"))
 			fprintf(stderr, "warning: program-name unsupported, assuming `envmod`\n");
@@ -426,15 +447,19 @@ int main(int argc, char **argv) {
 				usage(1);
 		}
 		ARGEND
+
+		setenvargs++;
 	}
 
-	while (argc > 0) {
-		char *value = strchr(argv[0], '=');
-		if (!value)
-			break;
-		*(value++) = '\0';
-		setenv(argv[0], value, 1);
-		SHIFT;
+	if (setenvargs) {
+		while (argc > 0) {
+			char *value = strchr(argv[0], '=');
+			if (!value)
+				break;
+			*(value++) = '\0';
+			setenv(argv[0], value, 1);
+			SHIFT;
+		}
 	}
 
 	if (argc == 0) {
