@@ -3,6 +3,7 @@ CFLAGS  = -std=gnu99 -Wall -Wextra -O2
 LDFLAGS =
 TARGETS = envmod
 TESTTARGETS = testdata/printhello
+SYMLINKS = flock env softlimit setlock
 MAN1    = envmod.1
 MANUALS = $(MAN1)
 PREFIX  = /usr/local/share
@@ -24,6 +25,9 @@ compile_flags.txt:
 .PHONY: test clean install
 
 test: $(TARGETS) $(TESTTARGETS) testdata/tests.py
+	for x in $(SYMLINKS); do \
+		ln -sfv ../envmod testdata/$$x; \
+	done
 	pytest -vv testdata/tests.py
 
 clean:

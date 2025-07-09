@@ -15,6 +15,8 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
+#define DEFAULT_SHELL "sh"
+
 #define ENVFILE_MAX 16
 #define KEEPENV_MAX 64
 
@@ -234,7 +236,7 @@ void usage(int code) {
 }
 
 int main(int argc, char **argv) {
-	int   lockfd, lockflags = 0, gid_len = 0, envgid_len = 0;
+	int   lockfd, lockfdflags = 0, lockflags = 0, locktimeout = 0, gid_len = 0, envgid_len = 0, useshell = 0;
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
 	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX], *modenv[KEEPENV_MAX];
 	int   envdirpath_len = 0, envfilepath_len = 0, modenv_len = 0;
@@ -356,6 +358,45 @@ int main(int argc, char **argv) {
 		}
 		ARGEND
 		setenvargs++;
+	} else if (!strcmp(self, "flock")) {
+		lockflags   = LOCK_EX;
+		lockfdflags = 0;
+		ARGBEGIN
+		switch (OPT) {
+			case 'c':
+				useshell++;
+				break;
+			case 'e':
+			case 'x':
+				lockflags &= ~LOCK_SH;
+				lockflags |= LOCK_EX;
+				break;
+			case 'n':
+				lockflags |= LOCK_NB;
+				break;
+			case 'o':
+				lockfdflags |= O_CLOEXEC;
+				break;
+			case 's':
+				lockflags &= ~LOCK_EX;
+				lockflags |= LOCK_SH;
+				break;
+			case 'v':
+				verbose++;
+				break;
+			case 'w':
+				locktimeout = (int) (1000.0 * atof(EARGF(usage(1))));
+				break;
+			case 'E':
+			case 'F':
+			case 'u':
+				fprintf(stderr, "warning: option -%c is ignored\n", OPT);
+				break;
+			default:
+				fprintf(stderr, "error: unknown option -%c\n", OPT);
+				usage(1);
+		}
+		ARGEND
 	} else {
 		if (strcmp(self, "envmod") && strcmp(self, "chpst"))
 			fprintf(stderr, "warning: program-name unsupported, assuming `envmod`\n");
@@ -411,6 +452,9 @@ int main(int argc, char **argv) {
 				break;
 			case 'P':
 				ssid++;
+				break;
+			case 'S':
+				useshell++;
 				break;
 			case '0' ... '9':
 				closefd[OPT - '0']++;
@@ -621,9 +665,12 @@ int main(int argc, char **argv) {
 	}
 
 	if (lock) {
-		if ((lockfd = open(lock, O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1) {
+		if ((lockfd = open(lock, lockfdflags | O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1) {
 			perror("unable to open lock");
 			exit(1);
+		}
+		if (locktimeout) {
+			ualarm(locktimeout * 1000, 0);
 		}
 		if (flock(lockfd, lockflags) == -1) {
 			perror("unable to lock");
@@ -670,9 +717,21 @@ int main(int argc, char **argv) {
 			exit(1);
 		}
 	}
+
 	exec = argv[0];
 	if (arg0)
 		argv[0] = arg0;
+
+	if (useshell) {
+		char **newargv = malloc((argc + 3) * sizeof(char *));
+		if ((newargv[0] = getenv("SHELL")) == NULL)
+			newargv[0] = DEFAULT_SHELL;
+		newargv[1] = "-c";
+		for (int i = 0; i < argc + 1; i++)
+			newargv[i + 2] = argv[i];
+		argv = newargv;
+		argc += 2;
+	}
 
 	execvpe(exec, argv, environ);
 	perror("execute");
