@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "arg.h"
+#include "signames.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -8,11 +9,13 @@
 #include <grp.h>
 #include <linux/limits.h>
 #include <pwd.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/file.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #define DEFAULT_SHELL "sh"
@@ -53,7 +56,7 @@ static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
 	return i;
 }
 
-int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
+static int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	struct passwd *pwd;
 	struct group  *gr;
 	char          *end;
@@ -100,7 +103,7 @@ int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	return gid_size;
 }
 
-char *strip(char *text, size_t size) {
+static char *strip(char *text, size_t size) {
 	while (size > 0 && isspace(text[0])) {
 		text++, size--;
 	}
@@ -111,7 +114,7 @@ char *strip(char *text, size_t size) {
 	return text;
 }
 
-char *nicevar(char *text, size_t size) {
+static char *nicevar(char *text, size_t size) {
 	text = strip(text, size);
 
 	for (size_t i = 0; i < size; i++) {
@@ -127,7 +130,7 @@ char *nicevar(char *text, size_t size) {
 	return text;
 }
 
-void parse_envdir(const char *path) {
+static void parse_envdir(const char *path) {
 	DIR           *dir;
 	FILE          *fp;
 	struct dirent *entry;
@@ -175,7 +178,7 @@ void parse_envdir(const char *path) {
 	closedir(dir);
 }
 
-void parse_envfile(const char *path) {
+static void parse_envfile(const char *path) {
 	FILE   *fp;
 	char   *line       = NULL, *value;
 	size_t  line_alloc = 0;
@@ -205,7 +208,7 @@ void parse_envfile(const char *path) {
 	fclose(fp);
 }
 
-void limit(int what, long l) {
+static void limit(int what, long l) {
 	struct rlimit r;
 
 	if (getrlimit(what, &r) == -1) {
@@ -223,7 +226,14 @@ void limit(int what, long l) {
 		fprintf(stderr, "error: unable to setrlimit\n");
 }
 
-void usage(int code) {
+static char *shellname(void) {
+	char *name = getenv("SHELL");
+	if (name)
+		return name;
+	return DEFAULT_SHELL;
+}
+
+static void usage(int code) {
 	fprintf(stderr, "usage: envmod [options] prog [arguments...]\n"
 	                "       softlimit [options] prog [arguments...]\n"
 	                "       setlock [-nNxX] prog [arguments...]\n"
@@ -235,10 +245,44 @@ void usage(int code) {
 	exit(code);
 }
 
+
+static int         sigign[NSIG];
+static const char *sigtrap[NSIG];
+static pid_t       pid;
+
+static void signal_handler(int signo) {
+	if (signo == SIGCHLD)
+		return;
+
+	if (sigtrap[signo]) {
+		char        signo_str[10];
+		const char *shell = shellname();
+		snprintf(signo_str, sizeof(signo_str), "%d", signo);
+
+		pid_t shellpid;
+		while ((shellpid = fork()) == -1) {
+			perror("unable to fork, retrying");
+			sleep(1);
+		}
+
+		if (shellpid == 0) {
+			setenv("signo", signo_str, 1);
+			setenv("signame", signum_to_signame(signo), 1);
+			execlp(shell, shell, "-c", sigtrap[signo], NULL);
+		}
+	}
+
+	if (sigign[signo])
+		return;
+
+	kill(pid, signo);
+}
+
 int main(int argc, char **argv) {
 	int   lockfd, lockfdflags = 0, lockflags = 0, locktimeout = 0, gid_len = 0, envgid_len = 0, useshell = 0;
 	char *arg0 = NULL, *root = NULL, *cd = NULL, *lock = NULL, *exec = NULL;
 	char *envdirpath[ENVFILE_MAX], *envfilepath[ENVFILE_MAX], *modenv[KEEPENV_MAX];
+	int   dofork         = 0;
 	int   envdirpath_len = 0, envfilepath_len = 0, modenv_len = 0;
 	int   setuser = 0, setenvuser = 0, clearenviron = 0, setenvargs = 0;
 	uid_t uid, envuid;
@@ -256,6 +300,11 @@ int main(int argc, char **argv) {
 		self = argv[0];
 	else
 		self++;
+
+	for (int i = 0; i < NSIG; i++)
+		sigign[i] = 0;
+	for (int i = 0; i < NSIG; i++)
+		sigtrap[i] = NULL;
 
 	if (!strcmp(self, "setuidgid") || !strcmp(self, "envuidgid")) {
 		if (argc < 2) {
@@ -458,6 +507,20 @@ int main(int argc, char **argv) {
 				break;
 			case '0' ... '9':
 				closefd[OPT - '0']++;
+				break;
+			case 'i':
+				dofork++;
+				sigign[signame_to_signum(EARGF(usage(1)))]++;
+				break;
+			case 'T':
+				dofork++;
+				int         signo   = signame_to_signum(EARGF(usage(1)));
+				const char *command = EARGF(usage(1));
+
+				sigtrap[signo] = command;
+				break;
+			case 'F':
+				dofork++;
 				break;
 			case 'm':
 				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
@@ -676,6 +739,8 @@ int main(int argc, char **argv) {
 			perror("unable to lock");
 			exit(1);
 		}
+		/* cancel alarm */
+		alarm(0);
 	}
 
 	if (clearenviron) {
@@ -724,16 +789,47 @@ int main(int argc, char **argv) {
 
 	if (useshell) {
 		char **newargv = malloc((argc + 3) * sizeof(char *));
-		if ((newargv[0] = getenv("SHELL")) == NULL)
-			newargv[0] = DEFAULT_SHELL;
-		newargv[1] = "-c";
+		newargv[0]     = shellname();
+		newargv[1]     = "-c";
 		for (int i = 0; i < argc + 1; i++)
 			newargv[i + 2] = argv[i];
 		argv = newargv;
 		argc += 2;
 	}
 
-	execvpe(exec, argv, environ);
-	perror("execute");
-	return 127;
+	if (!dofork) {
+		execvpe(exec, argv, environ);
+		perror("execute");
+		return 127;
+	}
+
+	for (int i = 0; i < NSIG; i++)
+		signal(i, signal_handler);
+
+	while ((pid = fork()) == -1) {
+		perror("unable to fork, retrying");
+		sleep(1);
+	}
+
+	if (pid == 0) {
+		execvpe(exec, argv, environ);
+		perror("execute");
+		_exit(127);
+	}
+
+	int exitstat;
+	waitpid(pid, &exitstat, 0);
+	if (WIFEXITED(exitstat)) {
+		if (verbose)
+			fprintf(stderr, "%s: child exited %d\n", self, WEXITSTATUS(exitstat));
+		return WEXITSTATUS(exitstat);
+	}
+
+	if (WIFSIGNALED(exitstat)) {
+		fprintf(stderr, "%s: child terminated using %s\n", self, signum_to_signame(WTERMSIG(exitstat)));
+		return 127;
+	}
+
+	fprintf(stderr, "%s: child terminated\n", self);
+	return 126;
 }
