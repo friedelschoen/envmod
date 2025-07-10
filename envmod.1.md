@@ -42,174 +42,175 @@ date: July 2025
 
 *softlimit \<options>* is the same as *envmod \<options>* for chosen options.
 
-*setlock*, *env* and *flock* uses some custom options which are described below.
+*setlock*, *env*, and *flock* use some custom options, described below.
 
 # OPTIONS
 
 ## -u *[:]user[:group]*
-setuidgid. Set uid and gid to the user's uid and gid, as found in /etc/passwd. If user is followed by a colon and a group, set the gid to group's gid, as found in /etc/group, instead of user's gid. If group consists of a colon-separated list of group names, envmod sets the group ids of all listed groups. If user is prefixed with a colon, the user and all group arguments are interpreted as uid and gids respectivly, and not looked up in the password or group file. All initial supplementary groups are removed.
+Set UID and GID to the user's UID and GID, as found in `/etc/passwd`. If user is followed by a colon and a group, set the GID to the group's GID, as found in `/etc/group`, instead of the user's GID. If the group consists of a colon-separated list of group names, *envmod* sets the group IDs of all listed groups. If the user is prefixed with a colon, the user and all group arguments are interpreted as UID and GIDs respectively, and not looked up in the password or group file. All initial supplementary groups are removed.
 
 ## -U *[:]user[:group]*
-envuidgid. Set the environment variables $UID and $GID to the user's uid and gid, as found in /etc/passwd. If user is followed by a colon and a group, set $GID to the group's gid, as found in /etc/group, instead of user's gid. If user is prefixed with a colon, the user and group arguments are interpreted as uid and gid respectivly, and not looked up in the password or group file.
+Set the environment variables `$UID` and `$GID` to the user's UID and GID, as found in `/etc/passwd`. If the user is followed by a colon and a group, set `$GID` to the group's GID instead. If the user is prefixed with a colon, the user and group arguments are interpreted as UID and GID respectively, and not looked up in system databases.
 
 ## -b *argv0*
-Run prog with argv0 as the 0th argument.
+Run *prog* with *argv0* as its `argv[0]`.
 
 ## -/ *root*
-Change the root directory to root before starting prog.
+Change the root directory to *root* before starting *prog*.
 
 ## -C *pwd*
-Change the working directory to pwd before starting prog. When combined with -/, the working directory is changed after the chroot.
+Change the working directory to *pwd* before starting *prog*. When combined with `-/`, the working directory is changed after the `chroot`.
 
-## -e dir
-Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable. Can be used multiple times.
+## -e *dir*
+Set environment variables as specified by files in the directory *dir*: if *dir* contains a file named *k* whose first line contains *v*, the environment value *k* is set with value *v*. The name *k* must not contain `=`. Trailing spaces and tabs in *v* are removed, and null bytes in *v* are replaced with newlines. If the file *k* is empty (0 bytes), *envmod* removes the variable without adding a new one. Can be used multiple times.
 
-## -E file
-Set various environment variables as specified by a file *path*. This file contains lines of variables, key and value are delimited by '='. If the value is empty (has a trailing '='), the key is removed from the environment. Lines without a '=' are ignored. Leading and trailing whitespaces are striped before. Can be used multiple times.
+## -E *file*
+Set environment variables as specified in the file *path*. This file contains lines of `key=value` pairs. If a line ends with `=`, the corresponding variable is removed from the environment. Lines without `=` are ignored. Leading and trailing whitespaces are removed. Can be used multiple times.
 
 ## -F
 Fork and redirect incoming signals to the child.
 
 ## -i *signal*
-Ignore incoming *signal* and don't deliver it to the child. This option enables *-F*.
+Ignore *signal* and do not deliver it to the child. This option implies `-F`.
 
 ## -T *signal* *command*
-Execute handler *command* before delivering signal to child. The command is executed within a shell (either *$SHELL* or "sh") with environment variable *"signo"* set to the number of the incoming signal and *"signame"* to the identifier of the signal (e.g. *SIGINT*). This option enables *-F*.
+Execute handler *command* before delivering the *signal* to the child. The command is executed via a shell (`$SHELL` or `sh`), with the environment variables `signo` (signal number) and `signame` (signal name, e.g. `SIGINT`) set. This option implies `-F` and is **not** mutually exclusive with `-i`.
 
 ## -S
-Use a shell (either *$SHELL* or "sh") to execute prog.
+Use a shell (`$SHELL` or `sh`) to execute *prog*.
 
 ## -n *inc*
-Add inc to the nice(2) value before starting prog. inc must be an integer, and may start with a minus or plus.
+Add *inc* to the `nice(2)` value before starting *prog*. *inc* must be an integer, optionally prefixed by `+` or `-`.
 
 ## -l *lock*
-Open the file lock for writing, and obtain an exclusive lock on it. lock will be created if it does not exist. If lock is locked by another process, wait until a new lock can be obtained.
+Open *lock* for writing and obtain an exclusive lock. The file will be created if it does not exist. If already locked by another process, wait until it becomes available.
 
 ## -L *lock*
-The same as -l, but fail immediately if lock is locked by another process.
+Same as `-l`, but fail immediately if the lock cannot be obtained.
 
 ## -x
-Clear environment before setting environment-variables.
+Clear the environment before setting new variables.
 
 ## -k *variable*
-Removes *variable* from the environment. But when used with *-x*, clear the environment but keep *variable*. Can be used multiple times.
+Remove *variable* from the environment. When used with `-x`, it preserves *variable* while clearing the rest. Can be used multiple times.
 
 ## -P
-Run prog in a new process group.
+Run *prog* in a new process group.
 
 ## -0
-Close standard input before starting prog.
+Close standard input before starting *prog*.
 
 ## -1
-Close standard output before starting prog.
+Close standard output before starting *prog*.
 
 ## -2
-Close standard error before starting prog.
+Close standard error before starting *prog*.
 
 ## -3, -4, -5, -6, -7, -8, -9
-Close file descriptor N before starting prog.
+Close file descriptor N before starting *prog*.
 
 ## -v
-Print verbose messages to standard error. This includes warnings about limits unsupported by the system.
+Print verbose messages to standard error. This includes warnings about unsupported limits.
 
 ## SOFTLIMIT
-Following options are understood by envmod, but also by *softlimit*.
 
-## -m *bytes*
-Limit the data segment, stack segment, locked physical pages, and total of all segment per process to bytes bytes each.
+The following options are understood by *envmod* and also by *softlimit*.
 
-## -d *bytes*
-limit data segment. Limit the data segment per process to bytes bytes.
+### -m *bytes*
+Limit the data segment, stack segment, locked memory, and total memory per process to *bytes*.
 
-## -o *n*
-Limit the number of open file descriptors per process to n.
+### -d *bytes*
+Limit data segment size to *bytes*.
 
-## -p *n*
-Limit the number of processes per uid to n.
+### -o *n*
+Limit the number of open file descriptors per process to *n*.
 
-## -f *bytes*
-Limit the output file size to bytes bytes.
+### -p *n*
+Limit the number of processes per UID to *n*.
 
-## -c *bytes*
-Limit the core file size to bytes bytes.
+### -f *bytes*
+Limit the output file size to *bytes*.
 
-## -r *n*
-Limit the resident set size to n bytes. This limit is not enforced unless physical memory is full.
+### -c *bytes*
+Limit the core dump size to *bytes*.
 
-## -t *n*
-Limit the CPU time to n seconds. This limit is not enforced except that the process receives a SIGXCPU signal after n seconds.
+### -r *bytes*
+Limit the resident set size to *bytes*. This limit is only enforced when physical memory is exhausted.
 
-## -s *n*
-Limit the stack segment per process to n bytes.
+### -t *seconds*
+Limit CPU time to *seconds*. A `SIGXCPU` is sent after this time elapses.
 
-## -M *n*
-Limit the locked physical pages per process to n bytes. This option has no effect on some operating systems. In *softlimit*, this option is also called *-l*.
+### -s *bytes*
+Limit the stack segment size to *bytes*.
+
+### -M *bytes*
+Limit the amount of locked memory to *bytes*. This may have no effect on some systems. In *softlimit*, this option is also `-l`.
 
 ## SETLOCK
 
-## -n
-Causes *setlock* to exit immediately if the lock is already held by another process.
+### -n
+Cause *setlock* to exit immediately if the lock is held by another process.
 
-## -N
-Causes *setlock* to wait until the lock is released by another process. This is the default behavior.
+### -N
+Wait until the lock is released. This is the default behaviour.
 
-## -x, -X
-These options modify the exit behavior, this is not supported in *envmod* and is ignored.
+### -x, -X
+These modify exit behaviour. They are ignored in *envmod*.
 
 ## ENV
 
-## -i
-Starts with a clean environment.
+### -i
+Start with an empty environment.
 
-## -u *variable*
-Removes *variable* from the environment. But when used with *-x*, clear the environment but keep *variable*. Can be used multiple times.
+### -u *variable*
+Remove *variable* from the environment. Used with `-i`, it preserves *variable*. Can be used multiple times.
 
-## -C *dir*
-Changes the directory to *dir*.
+### -C *dir*
+Change directory to *dir*.
 
-## -v
-Be talkative about what went wrong.
+### -v
+Print verbose messages.
 
 ## FLOCK
 
-## -c
-Use a shell (either *$SHELL* or "sh") to execute prog.
+### -c
+Use a shell to execute *prog*.
 
-## -e, -x
-Lock exclusively for *prog*. Mutually exclusive with *-s*.
+### -e, -x
+Obtain an exclusive lock. Mutually exclusive with `-s`.
 
-## -s
-Make a shared lock. Mutually exclusive with *-e* and *-x*.
+### -s
+Obtain a shared lock. Mutually exclusive with `-e` and `-x`.
 
-## -n
-Don't wait for the lock and exit immediately if locked.
+### -n
+Do not wait for the lock—exit immediately if it is held.
 
-## -o
+### -o
 Unlock and close the file before executing *prog*.
 
-## -w *timeout*
-Wait up to *timeout* seconds for locking. Exit if locked. A fractional timeout is allowed.
+### -w *timeout*
+Wait up to *timeout* seconds for the lock. Fractional time is allowed.
 
-## -v
-Be talkative about what went wrong.
+### -v
+Print verbose messages.
 
-## -E, -F, -u
+### -E, -F, -u
 These options are ignored.
 
 # EXIT STATUS
 
-* 100 invalid command
-* 101 runtime failure
-* 102 system failure
-* 120 command terminated (signaled)
-* 121 command terminated (unknown)
-* 127 command not found
+* 100 – invalid command
+* 101 – runtime failure
+* 102 – system failure
+* 120 – command terminated (signalled)
+* 121 – command terminated (unknown)
+* 127 – command not found
 
 # AUTHOR
 
-Based on the implementation by Gerrit Pape *<pape@smarden.org>*,
-rewritten by Friedel Schön *<derfriedmundschoen@gmail.com>*
+Based on the implementation by Gerrit Pape <pape@smarden.org>,
+rewritten by Friedel Schön <derfriedmundschoen@gmail.com>
 
-# LICENSE
+# LICENCE
 
-Zlib License
+Zlib Licence
