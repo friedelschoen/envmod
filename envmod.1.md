@@ -10,7 +10,7 @@ date: July 2025
 
 # SYNOPSIS
 
-*envmod* [options] prog [arguments...]
+*envmod* [options] [name=value] prog [arguments...]
 
 *softlimit* [options] prog [arguments...]
 
@@ -23,6 +23,10 @@ date: July 2025
 *envdir* path prog [arguments...]
 
 *setlock* [*-nNxX*] prog [arguments...]
+
+*env* [options] [name=value] prog [arguments...]
+
+*flock* [options] prog [arguments...]
 
 # DESCRIPTION
 
@@ -38,7 +42,7 @@ date: July 2025
 
 *softlimit \<options>* is the same as *envmod \<options>* for chosen options.
 
-*setlock* uses some custom options which are described below.
+*setlock*, *env* and *flock* uses some custom options which are described below.
 
 # OPTIONS
 
@@ -58,11 +62,22 @@ Change the root directory to root before starting prog.
 Change the working directory to pwd before starting prog. When combined with -/, the working directory is changed after the chroot.
 
 ## -e dir
-Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If
-the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable. Can be used multiple times.
+Set various environment variables as specified by files in the directory dir: If dir contains a file named k whose first line is v, envmod removes the environment variable k if it exists, and then adds the environment variable k with the value v. The name k must not contain =. Spaces and tabs at the end of v are removed, and nulls in v are changed to newlines. If the file k is empty (0 bytes long), envmod removes the environment variable k if it exists, without adding a new variable. Can be used multiple times.
 
 ## -E file
 Set various environment variables as specified by a file *path*. This file contains lines of variables, key and value are delimited by '='. If the value is empty (has a trailing '='), the key is removed from the environment. Lines without a '=' are ignored. Leading and trailing whitespaces are striped before. Can be used multiple times.
+
+## -F
+Fork and redirect incoming signals to the child.
+
+## -i *signal*
+Ignore incoming *signal* and don't deliver it to the child. This option enables *-F*.
+
+## -T *signal* *command*
+Execute handler *command* before delivering signal to child. The command is executed within a shell (either *$SHELL* or "sh") with environment variable *"signo"* set to the number of the incoming signal and *"signame"* to the identifier of the signal (e.g. *SIGINT*). This option enables *-F*.
+
+## -S
+Use a shell (either *$SHELL* or "sh") to execute prog.
 
 ## -n *inc*
 Add inc to the nice(2) value before starting prog. inc must be an integer, and may start with a minus or plus.
@@ -140,6 +155,46 @@ Causes *setlock* to wait until the lock is released by another process. This is 
 
 ## -x, -X
 These options modify the exit behavior, this is not supported in *envmod* and is ignored.
+
+## ENV
+
+## -i
+Starts with a clean environment.
+
+## -u *variable*
+Removes *variable* from the environment. But when used with *-x*, clear the environment but keep *variable*. Can be used multiple times.
+
+## -C *dir*
+Changes the directory to *dir*.
+
+## -v
+Be talkative about what went wrong.
+
+## FLOCK
+
+## -c
+Use a shell (either *$SHELL* or "sh") to execute prog.
+
+## -e, -x
+Lock exclusively for *prog*. Mutually exclusive with *-s*.
+
+## -s
+Make a shared lock. Mutually exclusive with *-e* and *-x*.
+
+## -n
+Don't wait for the lock and exit immediately if locked.
+
+## -o
+Unlock and close the file before executing *prog*.
+
+## -w *timeout*
+Wait up to *timeout* seconds for locking. Exit if locked. A fractional timeout is allowed.
+
+## -v
+Be talkative about what went wrong.
+
+## -E, -F, -u
+These options are ignored.
 
 # EXIT STATUS
 
