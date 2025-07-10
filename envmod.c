@@ -23,8 +23,16 @@
 #define ENVFILE_MAX 16
 #define KEEPENV_MAX 64
 
+#define FAIL_ERRNO(exitcode, fmt, ...) \
+	(fprintf(stderr, "%s: " fmt ": %s\n", self, ##__VA_ARGS__, strerror(errno)), exitcode > -1 ? exit(exitcode) : 0)
 
-extern char **environ;
+
+extern char      **environ;
+static int         sigign[NSIG];
+static const char *sigtrap[NSIG];
+static pid_t       pid;
+static char       *self;
+
 
 /* uid:gid[:gid[:gid]...] */
 static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
@@ -49,8 +57,8 @@ static int parse_ugid_num(char *str, uid_t *uid, gid_t *gids) {
 	}
 
 	if (*end != '\0') {
-		fprintf(stderr, "error: expected end, got %c\n", *end);
-		return -1;
+		fprintf(stderr, "%s: expected end in uidgid, got %c\n", self, *end);
+		exit(100);
 	}
 
 	return i;
@@ -73,8 +81,8 @@ static int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 	}
 
 	if ((pwd = getpwnam(str)) == NULL) {
-		fprintf(stderr, "unknown user: %s\n", groupstr);
-		return -1;
+		fprintf(stderr, "%s: unknown user: %s\n", self, str);
+		exit(101);
 	}
 	*uid = pwd->pw_uid;
 
@@ -94,8 +102,8 @@ static int parse_ugid(char *str, uid_t *uid, gid_t *gids) {
 			next = NULL;
 		}
 		if ((gr = getgrnam(groupstr)) == NULL) {
-			fprintf(stderr, "unknown group: %s\n", groupstr);
-			return -1;
+			fprintf(stderr, "%s: unknown group: %s\n", self, groupstr);
+			exit(101);
 		}
 		gids[gid_size++] = gr->gr_gid;
 	}
@@ -138,8 +146,7 @@ static void parse_envdir(const char *path) {
 	long           envvalalloc = 0, size;
 
 	if (!(dir = opendir(path))) {
-		perror("opendir envdir");
-		return;
+		FAIL_ERRNO(101, "unable to open envdir `%s`", path);
 	}
 
 	while ((entry = readdir(dir)) != NULL) {
@@ -147,8 +154,7 @@ static void parse_envdir(const char *path) {
 			continue;
 		snprintf(entrypath, PATH_MAX, "%s/%s", path, entry->d_name);
 		if ((fp = fopen(entrypath, "r")) == NULL) {
-			fprintf(stderr, "unable to open %s: %s\n", entrypath, strerror(errno));
-			perror("fopen envdir file");
+			FAIL_ERRNO(-1, "unable to open `%s`", entrypath);
 			continue;
 		}
 		fseek(fp, 0, SEEK_END);
@@ -159,8 +165,7 @@ static void parse_envdir(const char *path) {
 			rewind(fp);
 			if (size + 1 > envvalalloc) {
 				if ((newval = realloc(envval, size + 1)) == NULL) {
-					perror("alloc");
-					exit(1);
+					FAIL_ERRNO(102, "unable to allocate memory");
 				}
 				envval      = newval;
 				envvalalloc = size + 1;
@@ -185,8 +190,7 @@ static void parse_envfile(const char *path) {
 	ssize_t line_len;
 
 	if ((fp = fopen(path, "r")) == NULL) {
-		perror("open envfile");
-		exit(1);
+		FAIL_ERRNO(101, "unable to open envfile `%s`", path);
 	}
 
 	while ((line_len = getline(&line, &line_alloc, fp)) > 0) {
@@ -212,8 +216,7 @@ static void limit(int what, long l) {
 	struct rlimit r;
 
 	if (getrlimit(what, &r) == -1) {
-		fprintf(stderr, "error: unable to getrlimit\n");
-		return;
+		FAIL_ERRNO(102, "unable to get rlimit");
 	}
 	if (l < 0) {
 		r.rlim_cur = 0;
@@ -223,7 +226,7 @@ static void limit(int what, long l) {
 		r.rlim_cur = l;
 
 	if (setrlimit(what, &r) == -1)
-		fprintf(stderr, "error: unable to setrlimit\n");
+		FAIL_ERRNO(102, "unable to set rlimit");
 }
 
 static char *shellname(void) {
@@ -233,7 +236,7 @@ static char *shellname(void) {
 	return DEFAULT_SHELL;
 }
 
-static void usage(int code) {
+static void usage() {
 	fprintf(stderr, "usage: envmod [options] prog [arguments...]\n"
 	                "       softlimit [options] prog [arguments...]\n"
 	                "       setlock [-nNxX] prog [arguments...]\n"
@@ -242,13 +245,8 @@ static void usage(int code) {
 	                "       envdir dir prog [arguments...]\n"
 	                "       pgrphack prog [arguments...]\n");
 
-	exit(code);
+	exit(100);
 }
-
-
-static int         sigign[NSIG];
-static const char *sigtrap[NSIG];
-static pid_t       pid;
 
 static void signal_handler(int signo) {
 	if (signo == SIGCHLD)
@@ -261,7 +259,7 @@ static void signal_handler(int signo) {
 
 		pid_t shellpid;
 		while ((shellpid = fork()) == -1) {
-			perror("unable to fork, retrying");
+			FAIL_ERRNO(-1, "unable to fork, retrying");
 			sleep(1);
 		}
 
@@ -269,6 +267,8 @@ static void signal_handler(int signo) {
 			setenv("signo", signo_str, 1);
 			setenv("signame", signum_to_signame(signo), 1);
 			execlp(shell, shell, "-c", sigtrap[signo], NULL);
+			FAIL_ERRNO(0, "unable to execute shell");
+			_exit(127);
 		}
 	}
 
@@ -295,7 +295,7 @@ int main(int argc, char **argv) {
 	int  closefd[10];
 	for (int i = 0; i < 10; i++)
 		closefd[i] = 0;
-	char *self = strrchr(argv[0], '/');
+	self = strrchr(argv[0], '/');
 	if (self == NULL)
 		self = argv[0];
 	else
@@ -309,7 +309,7 @@ int main(int argc, char **argv) {
 	if (!strcmp(self, "setuidgid") || !strcmp(self, "envuidgid")) {
 		if (argc < 2) {
 			fprintf(stderr, "%s <uid-gid> command...", self);
-			return 1;
+			return 100;
 		}
 		setuser++;
 		gid_len = parse_ugid(argv[1], &uid, gid);
@@ -317,7 +317,7 @@ int main(int argc, char **argv) {
 	} else if (!strcmp(self, "envdir")) {
 		if (argc < 2) {
 			fprintf(stderr, "%s <uid-gid> command...", self);
-			return 1;
+			return 100;
 		}
 		envdirpath[envdirpath_len++] = argv[1];
 		argv += 2, argc -= 2;
@@ -339,7 +339,7 @@ int main(int argc, char **argv) {
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
-				usage(1);
+				usage();
 		}
 		ARGEND
 		lock = argv[0];
@@ -348,42 +348,42 @@ int main(int argc, char **argv) {
 		ARGBEGIN
 		switch (OPT) {
 			case 'm':
-				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
+				limits = limitl = limita = limitd = atol(EARGF(usage()));
 				break;
 			case 'a':
-				limita = atol(EARGF(usage(1)));
+				limita = atol(EARGF(usage()));
 				break;
 			case 'd':
-				limitd = atol(EARGF(usage(1)));
+				limitd = atol(EARGF(usage()));
 				break;
 			case 'o':
-				limito = atol(EARGF(usage(1)));
+				limito = atol(EARGF(usage()));
 				break;
 			case 'p':
-				limitp = atol(EARGF(usage(1)));
+				limitp = atol(EARGF(usage()));
 				break;
 			case 'f':
-				limitf = atol(EARGF(usage(1)));
+				limitf = atol(EARGF(usage()));
 				break;
 			case 'c':
-				limitc = atol(EARGF(usage(1)));
+				limitc = atol(EARGF(usage()));
 				break;
 			case 'r':
-				limitr = atol(EARGF(usage(1)));
+				limitr = atol(EARGF(usage()));
 				break;
 			case 't':
-				limitt = atol(EARGF(usage(1)));
+				limitt = atol(EARGF(usage()));
 				break;
 			case 'l':
 			case 'M':
-				limitl = atol(EARGF(usage(1)));
+				limitl = atol(EARGF(usage()));
 				break;
 			case 's':
-				limits = atol(EARGF(usage(1)));
+				limits = atol(EARGF(usage()));
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
-				usage(1);
+				usage();
 		}
 		ARGEND
 	} else if (!strcmp(self, "env")) {
@@ -393,17 +393,17 @@ int main(int argc, char **argv) {
 				clearenviron++;
 				break;
 			case 'u':
-				modenv[modenv_len++] = EARGF(usage(1));
+				modenv[modenv_len++] = EARGF(usage());
 				break;
 			case 'C':
-				cd = EARGF(usage(1));
+				cd = EARGF(usage());
 				break;
 			case 'v':
 				verbose++;
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
-				usage(1);
+				usage();
 		}
 		ARGEND
 		setenvargs++;
@@ -434,7 +434,7 @@ int main(int argc, char **argv) {
 				verbose++;
 				break;
 			case 'w':
-				locktimeout = (int) (1000.0 * atof(EARGF(usage(1))));
+				locktimeout = (int) (1000.0 * atof(EARGF(usage())));
 				break;
 			case 'E':
 			case 'F':
@@ -443,7 +443,7 @@ int main(int argc, char **argv) {
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
-				usage(1);
+				usage();
 		}
 		ARGEND
 	} else {
@@ -454,47 +454,47 @@ int main(int argc, char **argv) {
 		switch (OPT) {
 			case 'u':
 				setuser++;
-				if ((gid_len = parse_ugid(EARGF(usage(1)), &uid, gid)) == -1) {
+				if ((gid_len = parse_ugid(EARGF(usage()), &uid, gid)) == -1) {
 					return -1;
 				}
 				break;
 			case 'U':
 				setenvuser++;
-				if ((envgid_len = parse_ugid(EARGF(usage(1)), &envuid, envgid)) == -1) {
+				if ((envgid_len = parse_ugid(EARGF(usage()), &envuid, envgid)) == -1) {
 					return -1;
 				}
 				break;
 			case 'b':
-				arg0 = EARGF(usage(1));
+				arg0 = EARGF(usage());
 				break;
 			case '/':
-				root = EARGF(usage(1));
+				root = EARGF(usage());
 				break;
 			case 'C':
-				cd = EARGF(usage(1));
+				cd = EARGF(usage());
 				break;
 			case 'n':
-				nicelevel = atol(EARGF(usage(1)));
+				nicelevel = atol(EARGF(usage()));
 				break;
 			case 'l':
-				lock      = EARGF(usage(1));
+				lock      = EARGF(usage());
 				lockflags = LOCK_EX | LOCK_NB;
 				break;
 			case 'L':
-				lock      = EARGF(usage(1));
+				lock      = EARGF(usage());
 				lockflags = LOCK_EX;
 				break;
 			case 'e':
-				envdirpath[envdirpath_len++] = EARGF(usage(1));
+				envdirpath[envdirpath_len++] = EARGF(usage());
 				break;
 			case 'E':
-				envfilepath[envfilepath_len++] = EARGF(usage(1));
+				envfilepath[envfilepath_len++] = EARGF(usage());
 				break;
 			case 'x':
 				clearenviron++;
 				break;
 			case 'k':
-				modenv[modenv_len++] = EARGF(usage(1));
+				modenv[modenv_len++] = EARGF(usage());
 				break;
 			case 'v':
 				verbose++;
@@ -510,12 +510,12 @@ int main(int argc, char **argv) {
 				break;
 			case 'i':
 				dofork++;
-				sigign[signame_to_signum(EARGF(usage(1)))]++;
+				sigign[signame_to_signum(EARGF(usage()))]++;
 				break;
 			case 'T':
 				dofork++;
-				int         signo   = signame_to_signum(EARGF(usage(1)));
-				const char *command = EARGF(usage(1));
+				int         signo   = signame_to_signum(EARGF(usage()));
+				const char *command = EARGF(usage());
 
 				sigtrap[signo] = command;
 				break;
@@ -523,35 +523,35 @@ int main(int argc, char **argv) {
 				dofork++;
 				break;
 			case 'm':
-				limits = limitl = limita = limitd = atol(EARGF(usage(1)));
+				limits = limitl = limita = limitd = atol(EARGF(usage()));
 				break;
 			case 'd':
-				limitd = atol(EARGF(usage(1)));
+				limitd = atol(EARGF(usage()));
 				break;
 			case 'o':
-				limito = atol(EARGF(usage(1)));
+				limito = atol(EARGF(usage()));
 				break;
 			case 'p':
-				limitp = atol(EARGF(usage(1)));
+				limitp = atol(EARGF(usage()));
 				break;
 			case 'f':
-				limitf = atol(EARGF(usage(1)));
+				limitf = atol(EARGF(usage()));
 				break;
 			case 'c':
-				limitc = atol(EARGF(usage(1)));
+				limitc = atol(EARGF(usage()));
 				break;
 			case 'r':
-				limitr = atol(EARGF(usage(1)));
+				limitr = atol(EARGF(usage()));
 				break;
 			case 't':
-				limitt = atol(EARGF(usage(1)));
+				limitt = atol(EARGF(usage()));
 				break;
 			case 's':
-				limits = atol(EARGF(usage(1)));
+				limits = atol(EARGF(usage()));
 				break;
 			default:
 				fprintf(stderr, "error: unknown option -%c\n", OPT);
-				usage(1);
+				usage();
 		}
 		ARGEND
 
@@ -571,28 +571,24 @@ int main(int argc, char **argv) {
 
 	if (argc == 0) {
 		fprintf(stderr, "%s: command required\n", self);
-		usage(1);
+		usage();
 	}
 
 	if (ssid) {
 		if (setsid()) {
-			perror("setsid");
-			return 1;
+			FAIL_ERRNO(101, "unable to set sid");
 		}
 	}
 
 	if (setuser) {
 		if (setgroups(gid_len, gid) == -1) {
-			perror("setgroups");
-			return 1;
+			FAIL_ERRNO(101, "unable to set groups");
 		}
 		if (setgid(gid[0]) == -1) {
-			perror("setgid");
-			return 1;
+			FAIL_ERRNO(101, "unable to set user-group");
 		}
 		if (setuid(uid) == -1) {
-			perror("setuid");
-			return 1;
+			FAIL_ERRNO(101, "unable to set user");
 		}
 
 		if (envuid == 0) {
@@ -612,29 +608,26 @@ int main(int argc, char **argv) {
 	}
 
 	if (root) {
-		if (chroot(root) == -1) {
-			perror("unable to change root directory");
-			exit(1);
-		}
-		// chdir to '/', otherwise the next command will complain 'directory not found'
+		if (chroot(root) == -1)
+			FAIL_ERRNO(101, "unable to change root-directory");
+
+		/* chdir to '/', otherwise the next command will complain 'directory not found' */
 		if (chdir("/") == -1)
-			perror("unable to change directory");
+			FAIL_ERRNO(101, "unable to change directory");
 	}
 
 	if (cd) {
-		if (chdir(cd) == -1) {
-			perror("unable to change directory");
-			exit(1);
-		}
+		if (chdir(cd) == -1)
+			FAIL_ERRNO(101, "unable to change directory");
 	}
 
 	if (nicelevel != 0) {
 		errno = 0;
+		/* don't check return-value, nice(2) states there are true negatives,
+		   checking errno is more consistent */
 		nice(nicelevel);
 		if (errno != 0) {
-			perror("unable to set nice level");
-			exit(1);
-			/* no exit, nice(2) states there are true negatives */
+			FAIL_ERRNO(101, "unable to set nice level");
 		}
 	}
 
@@ -643,7 +636,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_DATA, limitd);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_DATA\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_DATA\n", self);
 #endif
 	}
 	if (limits >= -1) {
@@ -651,7 +644,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_STACK, limits);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_STACK\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_STACK\n", self);
 #endif
 	}
 	if (limitl >= -1) {
@@ -659,7 +652,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_MEMLOCK, limitl);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_MEMLOCK\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_MEMLOCK\n", self);
 #endif
 	}
 	if (limita >= -1) {
@@ -670,7 +663,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_AS, limita);
 #	else
 		if (verbose)
-			fprintf(stderr, "system does neither support RLIMIT_VMEM nor RLIMIT_AS\n");
+			fprintf(stderr, "%s: system does neither support RLIMIT_VMEM nor RLIMIT_AS\n", self);
 #	endif
 #endif
 	}
@@ -682,7 +675,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_OFILE, limito);
 #	else
 		if (verbose)
-			fprintf(stderr, "system does neither support RLIMIT_NOFILE nor RLIMIT_OFILE\n");
+			fprintf(stderr, "%s: system does neither support RLIMIT_NOFILE nor RLIMIT_OFILE\n", self);
 #	endif
 #endif
 	}
@@ -691,7 +684,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_NPROC, limitp);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_NPROC\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_NPROC\n", self);
 #endif
 	}
 	if (limitf >= -1) {
@@ -699,7 +692,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_FSIZE, limitf);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_FSIZE\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_FSIZE\n", self);
 #endif
 	}
 	if (limitc >= -1) {
@@ -707,7 +700,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_CORE, limitc);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_CORE\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_CORE\n", self);
 #endif
 	}
 	if (limitr >= -1) {
@@ -715,7 +708,7 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_RSS, limitr);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_RSS\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_RSS\n", self);
 #endif
 	}
 	if (limitt >= -1) {
@@ -723,22 +716,20 @@ int main(int argc, char **argv) {
 		limit(RLIMIT_CPU, limitt);
 #else
 		if (verbose)
-			fprintf(stderr, "system does not support RLIMIT_CPU\n");
+			fprintf(stderr, "%s: system does not support RLIMIT_CPU\n", self);
 #endif
 	}
 
 	if (lock) {
-		if ((lockfd = open(lock, lockfdflags | O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1) {
-			perror("unable to open lock");
-			exit(1);
-		}
-		if (locktimeout) {
+		if ((lockfd = open(lock, lockfdflags | O_WRONLY | O_APPEND | O_CREAT, 0644)) == -1)
+			FAIL_ERRNO(101, "unable to open lockfile");
+
+		if (locktimeout)
 			ualarm(locktimeout * 1000, 0);
-		}
-		if (flock(lockfd, lockflags) == -1) {
-			perror("unable to lock");
-			exit(1);
-		}
+
+		if (flock(lockfd, lockflags) == -1)
+			FAIL_ERRNO(101, "unable to lock file");
+
 		/* cancel alarm */
 		alarm(0);
 	}
@@ -752,7 +743,7 @@ int main(int argc, char **argv) {
 			for (int i = 0; i < modenv_len; i++) {
 				char *value = getenv(modenv[i]);
 				if (value == NULL) {
-					fprintf(stderr, "error: unknown environ '%s'\n", modenv[i]);
+					fprintf(stderr, "%s: unknown environ-var '%s'\n", self, modenv[i]);
 					continue;
 				}
 				char *pair = malloc(strlen(modenv[i]) + strlen(value) + 2);
@@ -778,8 +769,7 @@ int main(int argc, char **argv) {
 
 	for (int i = 0; i < 10; i++) {
 		if (closefd[i] && close(i) == -1) {
-			perror("unable to close stdin");
-			exit(1);
+			FAIL_ERRNO(101, "unable to close fd %d", i);
 		}
 	}
 
@@ -799,21 +789,20 @@ int main(int argc, char **argv) {
 
 	if (!dofork) {
 		execvpe(exec, argv, environ);
-		perror("execute");
-		return 127;
+		FAIL_ERRNO(127, "unable to execute");
 	}
 
 	for (int i = 0; i < NSIG; i++)
 		signal(i, signal_handler);
 
 	while ((pid = fork()) == -1) {
-		perror("unable to fork, retrying");
+		FAIL_ERRNO(-1, "unable to fork, retrying");
 		sleep(1);
 	}
 
 	if (pid == 0) {
 		execvpe(exec, argv, environ);
-		perror("execute");
+		FAIL_ERRNO(-1, "unable to execute");
 		_exit(127);
 	}
 
@@ -827,9 +816,9 @@ int main(int argc, char **argv) {
 
 	if (WIFSIGNALED(exitstat)) {
 		fprintf(stderr, "%s: child terminated using %s\n", self, signum_to_signame(WTERMSIG(exitstat)));
-		return 127;
+		return 120;
 	}
 
 	fprintf(stderr, "%s: child terminated\n", self);
-	return 126;
+	return 121;
 }

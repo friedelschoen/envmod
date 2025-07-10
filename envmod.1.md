@@ -198,12 +198,17 @@ These options are ignored.
 
 # EXIT STATUS
 
-envmod exits 100 when called with wrong options. It prints an error message and exits 1 if it has trouble changing the process state. Otherwise its exit code is the same as that of prog.
+* 100 invalid command
+* 101 runtime failure
+* 102 system failure
+* 120 command terminated (signaled)
+* 121 command terminated (unknown)
+* 127 command not found
 
 # AUTHOR
 
-Based on the implementation by Gerrit Pape \<pape@smarden.org>,
-rewritten by Friedel Schön \<derfriedmundschoen@gmail.com>
+Based on the implementation by Gerrit Pape *<pape@smarden.org>*,
+rewritten by Friedel Schön *<derfriedmundschoen@gmail.com>*
 
 # LICENSE
 
